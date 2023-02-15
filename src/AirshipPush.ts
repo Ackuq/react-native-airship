@@ -1,5 +1,5 @@
-import { PushNotification } from 'react-native';
-import { Android, iOS, NotificationStatus } from './types';
+import { NativeEventEmitter } from 'react-native';
+import { Android, iOS, NotificationStatus, PushPayload } from './types';
 
 /**
  * Airship Push.
@@ -15,6 +15,7 @@ export class AirshipPush {
    * Android only push methods.
    */
   public readonly android: AirshipPushAndroid;
+  
 
   constructor(private readonly module: any) {
     this.iOS = new AirshipPushIOS(module);
@@ -75,7 +76,7 @@ export class AirshipPush {
    * sent through Airship.
    * @returns A promise with the result.
    */
-  public getActiveNotifications(): Promise<PushNotification[]> {
+  public getActiveNotifications(): Promise<PushPayload[]> {
     return this.module.pushGetActiveNotifications();
   }
 
@@ -103,7 +104,36 @@ export class AirshipPush {
  * iOS Push.
  */
 export class AirshipPushIOS {
-  constructor(private readonly module: any) {}
+  
+  private eventEmitter: NativeEventEmitter;
+  private presentationOverridesCallback?: (pushPayload: PushPayload) => Promise<iOS.ForegroundPresentationOption[] | null>
+
+  constructor(private readonly module: any) {
+    this.eventEmitter = new NativeEventEmitter(module);
+    this.eventEmitter.addListener("com.airship.ios.override_presentation_options", (event) => {
+      let payload = event["pushPayload"] as PushPayload
+      let requestId = event["requestId"] as String
+
+      if (this.presentationOverridesCallback) {
+        this.presentationOverridesCallback(payload).then( (result) => {
+          module.pushIosOverridePresentationOptions(result, requestId);
+        })
+        .catch(() => {
+          module.pushIosOverridePresentationOptions(null, requestId);
+        });
+      }
+    })
+  }
+
+  /**
+   * Overrides the presentation options per notification. If a `null` is returned, the default
+   * options will be used.
+   * @param callback A callback that can override the foreground presentation options.
+   */
+  public setForegroundPresentationOptionsCallback(callback?: (pushPayload: PushPayload) => Promise<iOS.ForegroundPresentationOption[] | null>) {
+    this.presentationOverridesCallback = callback
+    this.module.pushIosOverridePresentationOptionsEnabled(callback != null)
+  }
 
   /**
    * Sets the foreground presentation options.
