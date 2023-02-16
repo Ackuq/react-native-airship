@@ -127,12 +127,13 @@ export class AirshipPushIOS {
 
   /**
    * Overrides the presentation options per notification. If a `null` is returned, the default
-   * options will be used.
+   * options will be used. The callback should return as quickly as possible to avoid delaying notification delivery.
+   * 
    * @param callback A callback that can override the foreground presentation options.
    */
   public setForegroundPresentationOptionsCallback(callback?: (pushPayload: PushPayload) => Promise<iOS.ForegroundPresentationOption[] | null>) {
     this.presentationOverridesCallback = callback
-    this.module.pushIosOverridePresentationOptionsEnabled(callback != null)
+    this.module.pushIosIsOverridePresentationOptionsEnabled(callback != null)
   }
 
   /**
@@ -196,8 +197,26 @@ export class AirshipPushIOS {
  * Android Push.
  */
 export class AirshipPushAndroid {
-  constructor(private readonly module: any) {}
 
+  private eventEmitter: NativeEventEmitter;
+  private foregroundDisplayPredicate?: (pushPayload: PushPayload) => Promise<Boolean>
+
+  constructor(private readonly module: any) {
+    this.eventEmitter = new NativeEventEmitter(module);
+    this.eventEmitter.addListener("com.airship.android.override_foreground_display", (event) => {
+      let payload = event["pushPayload"] as PushPayload
+      let requestId = event["requestId"] as String
+
+      if (this.foregroundDisplayPredicate) {
+        this.foregroundDisplayPredicate(payload).then( (result) => {
+          module.pushAndroidOverrideForegroundDisplay(result, requestId);
+        })
+        .catch(() => {
+          module.pushAndroidOverrideForegroundDisplay(true, requestId);
+        });
+      }
+    })
+  }
   /**
    * Checks if a notification category/channel is enabled.
    * @param channel The channel name.
@@ -214,4 +233,17 @@ export class AirshipPushAndroid {
   public setNotificationConfig(config: Android.NotificationConfig): void {
     return this.module.pushAndroidSetNotificationConfig(config);
   }
+
+  /**
+   * Overrides the foreground display per notification.
+   * 
+   * The predicate should return as quickly as possible to avoid delaying notification delivery.
+   * 
+   * @param predicate A foreground display predicate.
+   */
+  public setForegroundDisplayPredicate(predicate?: (pushPayload: PushPayload) => Promise<boolean>) {
+    this.foregroundDisplayPredicate = predicate
+    this.module.pushAndroidIsOverrideForegroundDisplayEnabled(predicate != null)
+  }
+
 }

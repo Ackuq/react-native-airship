@@ -651,13 +651,22 @@ RCT_REMAP_METHOD(privacyManagerSetEnabledFeatures,
 }
 
 
-RCT_EXPORT_METHOD(pushIosOverridePresentationOptionsEnabled:(BOOL)enabled) {
+RCT_EXPORT_METHOD(pushIosIsOverridePresentationOptionsEnabled:(BOOL)enabled) {
     AirshipReactNative.shared.overridePresentationOptionsEnabled = enabled;
 }
 
 RCT_EXPORT_METHOD(pushIosOverridePresentationOptions:(NSArray *)presentationOptions requestId:(NSString *)requestID) {
     [AirshipReactNative.shared presentationOptionOverridesResultWithRequestID:requestID presentationOptions:presentationOptions];
 }
+
+RCT_EXPORT_METHOD(pushAndroidIsOverrideForegroundDisplayEnabled:(BOOL)enabled) {
+    // Android only
+}
+
+RCT_EXPORT_METHOD(pushAndroidOverrideForegroundDisplay:(BOOL)display requestId:(NSString *)requestID) {
+    // Android only
+}
+
 
 -(void)handleResult:(id)result
               error:(NSError *)error
