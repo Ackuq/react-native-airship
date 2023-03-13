@@ -14,6 +14,7 @@ import com.urbanairship.push.PushMessage;
 import com.urbanairship.push.PushProviderBridge;
 import com.urbanairship.push.fcm.AirshipFirebaseIntegration;
 import com.urbanairship.push.fcm.FcmPushProvider;
+import com.urbanairship.push.notifications.NotificationChannelCompat;
 import com.urbanairship.util.UAStringUtil;
 
 import java.io.BufferedReader;
@@ -39,13 +40,9 @@ public class CustomFirebaseMessagingService extends FirebaseMessagingService {
 
     @Override
     public void onMessageReceived(@NonNull RemoteMessage message) {
-        try {
-            PushMessage pushMessage = parseMessage(message);
-            PushProviderBridge.processPush(FcmPushProvider.class, pushMessage)
-                    .executeSync(getApplicationContext());
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to parse message", e);
-        }
+        PushMessage pushMessage = parseMessage(message);
+        PushProviderBridge.processPush(FcmPushProvider.class, pushMessage)
+                .executeSync(getApplicationContext());
     }
 
     @Override
@@ -53,38 +50,47 @@ public class CustomFirebaseMessagingService extends FirebaseMessagingService {
         AirshipFirebaseIntegration.processNewToken(getApplicationContext(), token);
     }
 
-    private static PushMessage parseMessage(RemoteMessage message) throws JsonException, IOException {
+    private static PushMessage parseMessage(RemoteMessage message) {
         Map<String, String> data = new HashMap<>(message.getData());
         List<String> gzippedKeys = parseGzippedKeys(data);
 
         for (String key : gzippedKeys) {
             String gzippedValue = data.get(key);
             if (gzippedValue != null) {
-                String decompressed = decompress(gzippedValue);
-                data.put(key, decompressed);
+                try {
+                    String decompressed = decompress(gzippedValue);
+                    data.put(key, decompressed);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to decompress field " + key, e);
+                    data.remove(key);
+                }
             }
         }
 
         return new PushMessage(data);
     }
 
-    private static List<String> parseGzippedKeys(Map<String, String> data) throws JsonException {
+    private static List<String> parseGzippedKeys(Map<String, String> data) {
         String keysJsonString = data.get(GZIPPED_FIELDS);
         if (UAStringUtil.isEmpty(keysJsonString)) {
             return Collections.emptyList();
         }
 
-        JsonValue jsonValue = JsonValue.parseString(keysJsonString);
-        if (jsonValue.isString()) {
-            return Collections.singletonList(jsonValue.optString());
-        }
+        try {
+            JsonValue jsonValue = JsonValue.parseString(keysJsonString);
+            if (jsonValue.isString()) {
+                return Collections.singletonList(jsonValue.optString());
+            }
 
-        List<String> keys = new ArrayList<>();
-        for (JsonValue jsonKey : jsonValue.requireList()) {
-            keys.add(jsonKey.requireString());
+            List<String> keys = new ArrayList<>();
+            for (JsonValue jsonKey : jsonValue.requireList()) {
+                keys.add(jsonKey.requireString());
+            }
+            return keys;
+        } catch (JsonException e) {
+            Log.e(TAG, "Failed to parse gzipped keys", e);
+            return Collections.emptyList();
         }
-
-        return keys;
     }
 
     private static String decompress(String encoded) throws IOException {
